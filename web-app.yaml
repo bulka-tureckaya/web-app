@@ -1,0 +1,64 @@
+# Deployment для веб-приложения
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app-deployment
+  labels:
+    app: web-app
+spec:
+  replicas: 4  # Начинаем с 4 подов, так как они справляются с пиковой нагрузкой
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: web-app
+        image: web-app-image:latest
+        resources:
+          requests:
+            cpu: "0.1"  # Минимальное количество CPU, которое гарантировано будет выделено
+            memory: "128Mi"  # Минимальное количество памяти
+          limits:
+            cpu: "0.5"  # Лимит CPU на случай пиковой нагрузки при инициализации
+            memory: "128Mi"  # Лимит памяти
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 80
+          initialDelaySeconds: 10  # Даем приложению 10 секунд на инициализацию
+          periodSeconds: 5  # Проверяем готовность каждые 5 секунд
+---
+# PDB для обеспечения отказоустойчивости
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-app-pdb
+spec:
+  minAvailable: 3  # Гарантируем, что минимум 3 пода всегда будут доступны
+  selector:
+    matchLabels:
+      app: web-app
+---
+# HPA для автоматического масштабирования
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-app-deployment
+  minReplicas: 2  # Минимальное количество подов ночью
+  maxReplicas: 4  # Максимальное количество подов днем
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50  # Масштабируем, если средняя загрузка CPU превышает 50%
